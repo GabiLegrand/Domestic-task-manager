@@ -11,9 +11,9 @@ import re
 
 def human_to_iso_duration(human_str):
     # Extract number and unit from the human input
-    match = re.match(r"(-?\d+)\s*(second|seconds|minute|minutes|hour|hours|day|days|week|weeks)", human_str.lower())
+    match = re.match(r"(-?\d+)\s*(second|seconds|minute|minutes|heure|heures|jour|jours|semaine|semaines)", human_str.lower())
     if not match:
-        raise ValueError("Invalid duration format. Try '1 minute', '2 hours', '-3 days', etc.")
+        raise ValueError("Invalid duration format. Try '1 minute', '2 heures', '-3 jours', etc.")
     
     value, unit = int(match.group(1)), match.group(2)
     
@@ -21,9 +21,9 @@ def human_to_iso_duration(human_str):
     unit_map = {
         "second": "S", "seconds": "S",
         "minute": "M", "minutes": "M",
-        "hour": "H", "hours": "H",
-        "day": "D", "days": "D",
-        "week": "W", "weeks": "W",
+        "heure": "H", "heures": "H",
+        "jour": "D", "jours": "D",
+        "semaine": "W", "semaines": "W",
     }
     
     iso_unit = unit_map[unit]
