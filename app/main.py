@@ -106,9 +106,8 @@ def main_loop():
                 info=eval(user.google_credentials_json), scopes=auth.SCOPES
             )
             if admin_creds and admin_creds.valid:
-                 logger.info(f"Using credentials from {user.email} to manage Google Sheet.")
-                 break
-    
+                logger.info(f"Using credentials from {user.email} to manage Google Sheet.")
+                break
     if not admin_creds:
         logger.warning("No authenticated user found to manage the Google Sheet.")
         logger.warning("Attempting to authenticate the first user listed in the DB or from a manual prompt if DB is empty.")
@@ -135,6 +134,9 @@ def main_loop():
     
     # 2. Sync users and handle auth for others
     for user_dto in user_configs:
+        if user_dto.email == "alicepeyrolviale@gmail.com":
+            logger.warning(f"User {user_dto.email} -- SKIPING DEBUG")
+            continue
         user_in_db = crud.get_or_create_user(db_session, user_dto)
         if not user_in_db.google_credentials_json:
              # This flow would be better handled by generating the URL, putting it in the sheet,
@@ -177,15 +179,14 @@ def main_loop():
 def main():
     logger.info("Application starting...")
     init_db()
-    
-    while True:
-        try:
-            main_loop()
-        except Exception as e:
-            logger.critical(f"An unhandled error occurred in the main loop: {e}", exc_info=True)
+    main_loop()
+    # while True:
+    #     try:
+    #     except Exception as e:
+    #         logger.critical(f"An unhandled error occurred in the main loop: {e}", exc_info=True)
         
-        logger.info(f"Sleeping for {settings.LOOP_INTERVAL_SECONDS} seconds...")
-        time.sleep(settings.LOOP_INTERVAL_SECONDS)   
+    #     logger.info(f"Sleeping for {settings.LOOP_INTERVAL_SECONDS} seconds...")
+    #     time.sleep(settings.LOOP_INTERVAL_SECONDS)   
 
 if __name__ == "__main__":
     main()

@@ -23,6 +23,8 @@ class TaskDefinition(Base):
     pass_over_period = Column(Interval, nullable=False)
     actors = Column(String, nullable=False)  # Comma-separated names
     overdue_behavior = Column(String, nullable=False)
+    start_preferences = Column(String, nullable=True)  # "Vendredi 06:00:00", "06:00:00", etc.
+    task_days = Column(Integer, nullable=True)  # Number of days for the task
     is_active = Column(Boolean, default=True, nullable=False)
 
 class TaskInstance(Base):
@@ -33,6 +35,7 @@ class TaskInstance(Base):
     assigned_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     gtasks_task_id = Column(String, nullable=True, index=True)
     assigned_at = Column(DateTime, nullable=False)
+    start_at = Column(DateTime, nullable=True)
     deadline_repeat = Column(DateTime, nullable=False)
     deadline_final = Column(DateTime, nullable=False)
     completed_at = Column(DateTime, nullable=True)

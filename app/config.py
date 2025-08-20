@@ -12,6 +12,8 @@ class Settings:
     CREDENTIALS_FILE_PATH: str = os.getenv("CREDENTIALS_FILE_PATH")
     TOKEN_CACHE_DIR: str = os.getenv("TOKEN_CACHE_DIR")
     LOOP_INTERVAL_SECONDS: int = int(os.getenv("LOOP_INTERVAL_SECONDS", 300))
+    APP_TZ = os.getenv("TIMEZONE", "Europe/Helsinki")
 
 # Create a single settings instance to be imported by other modules
 settings = Settings()
+

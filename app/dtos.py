@@ -21,4 +21,6 @@ class TaskDefinitionDTO:
     pass_over_period: timedelta
     actors: List[str]
     overdue_behavior: str
+    start_preferences: List[str]
+    task_days: Optional[int] = None
     is_active: bool = True

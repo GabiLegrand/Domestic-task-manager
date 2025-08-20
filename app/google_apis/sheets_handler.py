@@ -97,6 +97,21 @@ class GSheetHandler:
                     if not all(k in row and row[k] for k in [const.TASK_COL_NAME, const.TASK_COL_CATEGORY, const.TASK_COL_REPRO_PERIOD, const.TASK_COL_PASS_PERIOD, const.TASK_COL_ACTORS, const.TASK_COL_BEHAVIOR]):
                         logger.warning(f"Skipping task '{row.get(const.TASK_COL_NAME)}' due to missing mandatory fields.")
                         continue
+                    start_preferences = []
+                    if const.TASK_COL_START_PREFS in row and row[const.TASK_COL_START_PREFS]:
+                        start_preferences =[preference.strip() for preference in str(row[const.TASK_COL_START_PREFS]).split(',')]
+
+                    task_days = None
+                    if const.TASK_COL_TASK_DAYS in row and row[const.TASK_COL_TASK_DAYS]:
+                        try:
+                            days_str = str(row[const.TASK_COL_TASK_DAYS])
+                            # Extract number from "X jour" or "X jours"
+                            import re
+                            match = re.search(r'(\d+)', days_str)
+                            if match:
+                                task_days = int(match.group(1))
+                        except (ValueError, TypeError):
+                            logger.warning(f"Invalid task days format: {row[const.TASK_COL_TASK_DAYS]}")
 
                     task = TaskDefinitionDTO(
                         name=row[const.TASK_COL_NAME],
@@ -104,7 +119,9 @@ class GSheetHandler:
                         reproduction_period=parse_duration(human_to_iso_duration(row[const.TASK_COL_REPRO_PERIOD])),
                         pass_over_period=parse_duration(human_to_iso_duration(row[const.TASK_COL_PASS_PERIOD])),
                         actors=[actor.strip() for actor in str(row[const.TASK_COL_ACTORS]).split(',')],
-                        overdue_behavior=row[const.TASK_COL_BEHAVIOR]
+                        overdue_behavior=row[const.TASK_COL_BEHAVIOR],
+                        start_preferences=start_preferences,
+                        task_days=task_days
                     )
                     all_tasks.append(task)
                 except Exception as e:

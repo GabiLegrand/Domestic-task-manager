@@ -6,6 +6,9 @@ from datetime import datetime, timezone
 from app.database import models
 from app.dtos import TaskDefinitionDTO, UserDTO
 import app.constants as const
+import logging
+
+logger = logging.getLogger(__name__)
 
 # User CRUD
 def get_or_create_user(db: Session, user_dto: UserDTO) -> models.User:
@@ -29,7 +32,7 @@ def update_user_credentials(db: Session, email: str, creds_json: str):
 
 # Task Definition CRUD
 def upsert_task_definition(db: Session, task_def_dto: TaskDefinitionDTO) -> models.TaskDefinition:
-    task_def = db.query(models.TaskDefinition).filter(models.TaskDefinition.name == task_def_dto.name).first()
+    task_def : models.TaskDefinition= db.query(models.TaskDefinition).filter(models.TaskDefinition.name == task_def_dto.name).first()
     if task_def:
         # Update existing definition
         task_def.category = task_def_dto.category
@@ -37,6 +40,8 @@ def upsert_task_definition(db: Session, task_def_dto: TaskDefinitionDTO) -> mode
         task_def.pass_over_period = task_def_dto.pass_over_period
         task_def.actors = ",".join(task_def_dto.actors)
         task_def.overdue_behavior = task_def_dto.overdue_behavior
+        task_def.start_preferences = ",".join(task_def_dto.start_preferences)
+        task_def.task_days = task_def_dto.task_days
         task_def.is_active = True
     else:
         # Create new definition
@@ -47,9 +52,12 @@ def upsert_task_definition(db: Session, task_def_dto: TaskDefinitionDTO) -> mode
             pass_over_period=task_def_dto.pass_over_period,
             actors=",".join(task_def_dto.actors),
             overdue_behavior=task_def_dto.overdue_behavior,
+            start_preferences = ",".join(task_def_dto.start_preferences),
+            task_days = task_def_dto.task_days,
             is_active=True
         )
         db.add(task_def)
+    logger.info(f"{task_def.name} - {task_def.start_preferences}")
     db.commit()
     db.refresh(task_def)
     return task_def

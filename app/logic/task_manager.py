@@ -1,6 +1,7 @@
 # ## path: app/logic/task_manager.py
 import logging
 from datetime import datetime, timezone
+from typing import Optional
 from sqlalchemy.orm import Session
 
 import app.database.crud as crud
@@ -8,12 +9,16 @@ from app.database.models import User, TaskDefinition, TaskInstance
 from app.dtos import TaskDefinitionDTO
 from app.google_apis.tasks_handler import GoogleTasksHandler
 import app.constants as const
+from app.logic.time_finder import TimePatternService
+from app.config import settings
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 
 class TaskManager:
     def __init__(self, db: Session):
         self.db = db
+        self.time_pattern = TimePatternService()
 
     def sync_task_definitions(self, task_defs_from_sheet: list[TaskDefinitionDTO]):
         """Synchronizes task definitions from the sheet with the database."""
@@ -66,13 +71,52 @@ class TaskManager:
             except Exception as e:
                 logger.error(f"Error processing instance {instance.instance_uuid}: {e}", exc_info=True)
 
+    def _generate_start_date(self, instance: Optional[TaskInstance] = None, definition: Optional[TaskDefinition] = None):
+        """
+            Function should be run before assignment
+        """
+        now = datetime.now(timezone.utc)
+        
+        next_deadline = now + definition.reproduction_period
+        if instance is None:
+            deadline_final = now + definition.pass_over_period
+        else :
+            definition = instance.definition
+            deadline_final = instance.deadline_final
+    
+        end_date = max(next_deadline.replace(tzinfo=timezone.utc), deadline_final.replace(tzinfo=timezone.utc))
+        start_preferences = definition.start_preferences
+        start_preferences = start_preferences.split(',') if start_preferences != "" else []
+        
+        nb_days = definition.task_days
 
-    def _check_and_update_instance_state(self, instance: TaskInstance):
-        """Checks a single instance against Google Tasks and updates its state."""
+        start_date = self.time_pattern.find_start_datetime(start_preferences, end_date, nb_days)
+
+        return start_date
+
+    def _reassign_to_user(self, instance: TaskInstance):
+        """
+            Reassign to user suppose that user now have the task assigned to him.
+            Instance start now, but start date will be defined by the task definition logic
+        """
+
         now = datetime.now(timezone.utc)
         definition = instance.definition
 
+        crud.update_task_instance(self.db, instance.id,
+            status=const.STATUS_ACTIVE,
+            completed_at=None,
+            assigned_at=now,
+            deadline_repeat=now + definition.reproduction_period,
+            start_date=self._generate_start_date(instance)
+        )
+
+    def _check_and_update_instance_state(self, instance: TaskInstance):
+        """Checks a single instance against Google Tasks and updates its state."""
+        definition = instance.definition
         logger.info(f'*******  Currently analysing : {definition.name} -- {instance.assigned_user.name}')
+        
+        now = datetime.now(timezone.utc)
         logger.info(f'Now time : {now} - repeat deadline {instance.deadline_repeat} - final deadline: {instance.deadline_final}')
         # If a task is completed, check if it's time to reactivate
         if instance.status == const.STATUS_COMPLETED:
@@ -87,12 +131,7 @@ class TaskManager:
                 reactivation_time = instance.completed_at.replace(tzinfo=timezone.utc) + definition.reproduction_period
                 if now > reactivation_time:
                     logger.info(f"Reactivating task '{definition.name}' for user {instance.assigned_user.name}.")
-                    crud.update_task_instance(self.db, instance.id,
-                        status=const.STATUS_ACTIVE,
-                        completed_at=None,
-                        assigned_at=now,
-                        deadline_repeat=now + definition.reproduction_period,
-                    )
+                    self._reassign_to_user(instance)
                 else :
                     reactivation_time = reactivation_time.strftime("%d/%m/%Y, %H:%M:%S")
                     logger.info(f"Task '{definition.name}' for user {instance.assigned_user.name} is done, but waiting for reactivation at {reactivation_time}")
@@ -155,9 +194,9 @@ class TaskManager:
                 deadline_repeat=now + definition.reproduction_period,
                 deadline_final=now + definition.pass_over_period,
                 status=const.STATUS_ACTIVE,
+                start_date=self._generate_start_date(definition=definition),
                 allow_reassignment=False
             )
-
             return
         new_instance = crud.create_task_instance(self.db,
             task_definition_id=definition.id,
@@ -165,6 +204,7 @@ class TaskManager:
             assigned_at=now,
             deadline_repeat=now + definition.reproduction_period,
             deadline_final=now + definition.pass_over_period,
+            start_date=self._generate_start_date(definition=definition),
             status=const.STATUS_ACTIVE
         )
         logger.info(f"Created new instance {new_instance.instance_uuid} of '{definition.name}' for user '{next_user.name}'.")
@@ -172,6 +212,7 @@ class TaskManager:
     def sync_gtasks_state(self, user: User, tasks_handler: GoogleTasksHandler):
         """Synchronizes the state of DB instances with Google Tasks for a specific user."""
         logger.info(f"Syncing Google Tasks state for user {user.email}")
+        now = datetime.now(ZoneInfo(settings.APP_TZ))
         user_instances = self.db.query(TaskInstance).filter(
             TaskInstance.assigned_user_id == user.id,
             TaskInstance.status == const.STATUS_ACTIVE
@@ -199,9 +240,10 @@ class TaskManager:
 
                 # Case 1: Task exists in DB but not in Google Tasks -> Create it
                 if not gtask:
-                    gtasks_id = tasks_handler.create_task(instance)
-                    if gtasks_id:
-                        crud.update_task_instance(self.db, instance.id, gtasks_task_id=gtasks_id)
+                    if instance.start_date < now:
+                        gtasks_id = tasks_handler.create_task(instance)
+                        if gtasks_id:
+                            crud.update_task_instance(self.db, instance.id, gtasks_task_id=gtasks_id)
                     continue
 
                 # Store gtask_id if it's missing in DB

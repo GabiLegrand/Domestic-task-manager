@@ -12,6 +12,8 @@ TASK_COL_REPRO_PERIOD = 'Durée reproduction'
 TASK_COL_PASS_PERIOD = 'Durée avant passation'
 TASK_COL_ACTORS = 'Acteurs'
 TASK_COL_BEHAVIOR = 'Comportement non realisation'
+TASK_COL_START_PREFS = 'Préférences début'
+TASK_COL_TASK_DAYS = 'Nombre de jours pour la tâche'
 
 # Behavior types
 BEHAVIOR_KEEP = 'Garder'

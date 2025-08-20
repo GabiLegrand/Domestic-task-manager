@@ -8,6 +8,7 @@ services:
     env_file:
       - .env
     volumes:
+      - .:/app
       # Mount the credentials file into the container
       - ./client_secret.json:/app/client_secret.json
       # Mount a volume to persist user auth tokens across container restarts
