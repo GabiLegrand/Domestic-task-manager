@@ -179,14 +179,14 @@ def main_loop():
 def main():
     logger.info("Application starting...")
     init_db()
-    main_loop()
-    # while True:
-    # #     try:
-    # #     except Exception as e:
-    # #         logger.critical(f"An unhandled error occurred in the main loop: {e}", exc_info=True)
+    while True:
+        try:
+            main_loop()
+        except Exception as e:
+            logger.critical(f"An unhandled error occurred in the main loop: {e}", exc_info=True)
         
-    #     logger.info(f"Sleeping for {settings.LOOP_INTERVAL_SECONDS} seconds...")
-    #     time.sleep(settings.LOOP_INTERVAL_SECONDS)   
+        logger.info(f"Sleeping for {settings.LOOP_INTERVAL_SECONDS} seconds...")
+        time.sleep(settings.LOOP_INTERVAL_SECONDS)   
 
 if __name__ == "__main__":
     main()
