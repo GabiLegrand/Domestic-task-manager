@@ -229,6 +229,7 @@ class TaskManager:
             )
             if instance.start_date.replace(tzinfo=timezone.utc) < min_date:
                 return datetime.now(timezone.utc)
+            return min_date
         """Synchronizes the state of DB instances with Google Tasks for a specific user."""
         logger.info(f"Syncing Google Tasks state for user {user.email}")
         now = datetime.now(timezone.utc)
@@ -293,7 +294,6 @@ class TaskManager:
             TaskInstance.status != const.STATUS_ACTIVE,
             TaskInstance.gtasks_task_id is not None
         ).all()
-        print(inactive_instances)
         for instance in inactive_instances:
             tasklist_id = tasks_handler._get_or_create_tasklist(instance.definition.category)
             if tasklist_id:
