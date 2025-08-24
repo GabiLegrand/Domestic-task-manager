@@ -134,9 +134,9 @@ def main_loop():
     
     # 2. Sync users and handle auth for others
     for user_dto in user_configs:
-        if user_dto.email == "alicepeyrolviale@gmail.com":
-            logger.warning(f"User {user_dto.email} -- SKIPING DEBUG")
-            continue
+        # if user_dto.email == "alicepeyrolviale@gmail.com":
+        #     logger.warning(f"User {user_dto.email} -- SKIPING DEBUG")
+        #     continue
         user_in_db = crud.get_or_create_user(db_session, user_dto)
         if not user_in_db.google_credentials_json:
              # This flow would be better handled by generating the URL, putting it in the sheet,
