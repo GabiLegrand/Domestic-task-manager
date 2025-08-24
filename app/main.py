@@ -181,9 +181,9 @@ def main():
     init_db()
     main_loop()
     # while True:
-    #     try:
-    #     except Exception as e:
-    #         logger.critical(f"An unhandled error occurred in the main loop: {e}", exc_info=True)
+    # #     try:
+    # #     except Exception as e:
+    # #         logger.critical(f"An unhandled error occurred in the main loop: {e}", exc_info=True)
         
     #     logger.info(f"Sleeping for {settings.LOOP_INTERVAL_SECONDS} seconds...")
     #     time.sleep(settings.LOOP_INTERVAL_SECONDS)   

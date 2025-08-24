@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 import app.database.crud as crud
 from app.database.models import User, TaskDefinition, TaskInstance
-from app.dtos import TaskDefinitionDTO
+from app.dtos import TaskDefinitionDTO, TaskUpdateDTO
 from app.google_apis.tasks_handler import GoogleTasksHandler
 import app.constants as const
 from app.logic.time_finder import TimePatternService
@@ -77,14 +77,14 @@ class TaskManager:
         """
         now = datetime.now(timezone.utc)
         
-        next_deadline = now + definition.reproduction_period
         if instance is None:
             deadline_final = now + definition.pass_over_period
         else :
             definition = instance.definition
             deadline_final = instance.deadline_final
+        next_deadline = now + definition.reproduction_period
     
-        end_date = max(next_deadline.replace(tzinfo=timezone.utc), deadline_final.replace(tzinfo=timezone.utc))
+        end_date = min(next_deadline.replace(tzinfo=timezone.utc), deadline_final.replace(tzinfo=timezone.utc))
         start_preferences = definition.start_preferences
         start_preferences = start_preferences.split(',') if start_preferences != "" else []
         
@@ -117,10 +117,14 @@ class TaskManager:
         logger.info(f'*******  Currently analysing : {definition.name} -- {instance.assigned_user.name}')
         
         now = datetime.now(timezone.utc)
-        logger.info(f'Now time : {now} - repeat deadline {instance.deadline_repeat} - final deadline: {instance.deadline_final}')
+        logger.info(f'\tNow time : {now}')
+        logger.info(f'\tRepeat deadline {instance.deadline_repeat}')
+        logger.info(f'\tFinal deadline: {instance.deadline_final}')
+        if instance.status == const.STATUS_TERMINATED:
+            return
+
         # If a task is completed, check if it's time to reactivate
         if instance.status == const.STATUS_COMPLETED:
-
             if now > instance.deadline_final.replace(tzinfo=timezone.utc):
                 logger.info(f"Final deadline passed for task '{definition.name}' for user {instance.assigned_user.name}.  Passing to next user.")
                 crud.update_task_instance(self.db, instance.id, status=const.STATUS_TERMINATED)
@@ -128,7 +132,7 @@ class TaskManager:
                 if instance.allow_reassignment:
                     self._assign_to_next_user(definition, instance.assigned_user.name)
             else : 
-                reactivation_time = instance.completed_at.replace(tzinfo=timezone.utc) + definition.reproduction_period
+                reactivation_time = instance.deadline_repeat.replace(tzinfo=timezone.utc) 
                 if now > reactivation_time:
                     logger.info(f"Reactivating task '{definition.name}' for user {instance.assigned_user.name}.")
                     self._reassign_to_user(instance)
@@ -137,9 +141,9 @@ class TaskManager:
                     logger.info(f"Task '{definition.name}' for user {instance.assigned_user.name} is done, but waiting for reactivation at {reactivation_time}")
             
             return
-
+        
         # If task is active, check for pass-over condition
-        if instance.status == const.STATUS_ACTIVE and now > instance.deadline_final.replace(tzinfo=timezone.utc):
+        if now > instance.deadline_final.replace(tzinfo=timezone.utc):
             logger.info(f"Final deadline passed for task '{definition.name}' for user {instance.assigned_user.name}.")
             behavior = definition.overdue_behavior
 
@@ -165,6 +169,11 @@ class TaskManager:
                 # Extend the deadline to avoid re-processing this every loop
                 new_final_deadline = now + definition.pass_over_period
                 crud.update_task_instance(self.db, instance.id, deadline_final=new_final_deadline)
+            return 
+        # Still active, just auto reassigne the task to user to keep repeat working
+        if  now > instance.deadline_repeat.replace(tzinfo=timezone.utc):
+            logger.info(f"Reactivating task '{definition.name}' for user {instance.assigned_user.name}.")
+            self._reassign_to_user(instance)
 
     def _assign_to_next_user(self, definition: TaskDefinition, current_user_name: str | None):
         """Assigns a task definition to the next user in the rotation."""
@@ -210,9 +219,19 @@ class TaskManager:
         logger.info(f"Created new instance {new_instance.instance_uuid} of '{definition.name}' for user '{next_user.name}'.")
 
     def sync_gtasks_state(self, user: User, tasks_handler: GoogleTasksHandler):
+        def _min_date(instance : TaskInstance):
+            min_date = min(
+                min(
+                    instance.start_date.replace(tzinfo=timezone.utc),
+                    instance.deadline_final.replace(tzinfo=timezone.utc),
+                ), 
+                instance.deadline_repeat.replace(tzinfo=timezone.utc)
+            )
+            if instance.start_date.replace(tzinfo=timezone.utc) < min_date:
+                return datetime.now(timezone.utc)
         """Synchronizes the state of DB instances with Google Tasks for a specific user."""
         logger.info(f"Syncing Google Tasks state for user {user.email}")
-        now = datetime.now(ZoneInfo(settings.APP_TZ))
+        now = datetime.now(timezone.utc)
         user_instances = self.db.query(TaskInstance).filter(
             TaskInstance.assigned_user_id == user.id,
             TaskInstance.status == const.STATUS_ACTIVE
@@ -232,7 +251,7 @@ class TaskManager:
                 continue
 
             # Fetch all tasks from Google Tasks for this category once
-            gtasks_map = tasks_handler.get_all_tasks_with_sync_id(tasklist_id)
+            gtasks_map: dict = tasks_handler.get_all_tasks_with_sync_id(tasklist_id)
 
             for instance in instances:
                 instance_uuid_str = str(instance.instance_uuid)
@@ -240,30 +259,41 @@ class TaskManager:
 
                 # Case 1: Task exists in DB but not in Google Tasks -> Create it
                 if not gtask:
-                    if instance.start_date < now:
-                        gtasks_id = tasks_handler.create_task(instance)
-                        if gtasks_id:
-                            crud.update_task_instance(self.db, instance.id, gtasks_task_id=gtasks_id)
+                    if _min_date(instance) >= now:
+                        logger.info(f'Task {instance.definition.name} - skipped because time is not right :'
+                                    f'{instance.start_date.replace(tzinfo=timezone.utc)} - now : {now}')
+                        continue
+                    gtasks_id = tasks_handler.create_task(instance)
+                    if gtasks_id:
+                        crud.update_task_instance(self.db, instance.id, gtasks_task_id=gtasks_id)
                     continue
-
+                gtask = TaskUpdateDTO(
+                    title=gtask.get('title', None),
+                    notes=gtask.get('notes', None),
+                    status=gtask.get('status', None),
+                    completed=gtask.get('completed', None),
+                )
                 # Store gtask_id if it's missing in DB
                 if not instance.gtasks_task_id:
-                     crud.update_task_instance(self.db, instance.id, gtasks_task_id=gtask['id'])
+                     crud.update_task_instance(self.db, instance.id, gtasks_task_id=gtask.id)
 
                 # Case 2: Task completed in Google Tasks
-                if gtask['status'] == 'completed':
+                if gtask.status == 'completed':
                     if instance.status == const.STATUS_ACTIVE:
                         logger.info(f"Task '{instance.definition.name}' marked as completed in Google Tasks for user {user.name}.")
-                        completion_time = datetime.fromisoformat(gtask['completed'].replace('Z', '+00:00'))
+                        completion_time = datetime.fromisoformat(gtask.completed.replace('Z', '+00:00'))
                         crud.update_task_instance(self.db, instance.id, status=const.STATUS_COMPLETED, completed_at=completion_time)
                         crud.create_completion_log(self.db, task_instance_id=instance.id, user_id=user.id, completed_at=completion_time, trigger_type=const.TRIGGER_API)
+                else :
+                    tasks_handler.refresh_title(instance, tasklist_id)
 
         # Case 3: Task in DB is completed/terminated, but exists in Google -> Delete it
         inactive_instances = self.db.query(TaskInstance).filter(
             TaskInstance.assigned_user_id == user.id,
             TaskInstance.status != const.STATUS_ACTIVE,
-            TaskInstance.gtasks_task_id != None
+            TaskInstance.gtasks_task_id is not None
         ).all()
+        print(inactive_instances)
         for instance in inactive_instances:
             tasklist_id = tasks_handler._get_or_create_tasklist(instance.definition.category)
             if tasklist_id:

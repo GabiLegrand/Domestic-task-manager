@@ -35,7 +35,7 @@ class TaskInstance(Base):
     assigned_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     gtasks_task_id = Column(String, nullable=True, index=True)
     assigned_at = Column(DateTime, nullable=False)
-    start_at = Column(DateTime, nullable=True)
+    start_date = Column(DateTime, nullable=True)
     deadline_repeat = Column(DateTime, nullable=False)
     deadline_final = Column(DateTime, nullable=False)
     completed_at = Column(DateTime, nullable=True)
